@@ -1,0 +1,263 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Whiteboard Test</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 20px;
+        }
+        #canvas-container {
+            border: 1px solid #ccc;
+            margin-bottom: 20px;
+        }
+        canvas {
+            background-color: white;
+            cursor: crosshair;
+        }
+        .controls {
+            margin-bottom: 20px;
+        }
+        .chat-container {
+            border: 1px solid #ccc;
+            padding: 10px;
+            height: 300px;
+            overflow-y: auto;
+            margin-bottom: 10px;
+        }
+        .message {
+            margin-bottom: 5px;
+            padding: 5px;
+            border-radius: 5px;
+        }
+        .user-message {
+            background-color: #e3f2fd;
+            text-align: right;
+        }
+        .ai-message {
+            background-color: #f5f5f5;
+        }
+    </style>
+</head>
+<body>
+    <h1>Whiteboard Test</h1>
+    
+    <div class="controls">
+        <button id="createBoard">Create New Board</button>
+        <button id="clearBoard">Clear Board</button>
+        <button id="undo">Undo</button>
+        <button id="redo">Redo</button>
+        <div>
+            <label>Color: </label>
+            <input type="color" id="colorPicker" value="#000000">
+            <label>Size: </label>
+            <input type="range" id="sizeSlider" min="1" max="20" value="5">
+        </div>
+    </div>
+
+    <div id="canvas-container">
+        <canvas id="whiteboard" width="800" height="600"></canvas>
+    </div>
+
+    <div class="chat-container" id="chatMessages"></div>
+    <div>
+        <input type="text" id="messageInput" placeholder="Type your message...">
+        <button id="sendMessage">Send</button>
+    </div>
+
+    <script>
+        // WebSocket connections
+        let boardSocket;
+        let chatSocket;
+        let currentBoardId;
+        let sessionId = generateSessionId();
+        let username = "User" + Math.floor(Math.random() * 1000);
+
+        // Canvas setup
+        const canvas = document.getElementById('whiteboard');
+        const ctx = canvas.getContext('2d');
+        let isDrawing = false;
+        let lastX = 0;
+        let lastY = 0;
+        let currentColor = '#000000';
+        let currentSize = 5;
+
+        // Initialize WebSocket connections
+        function initWebSockets() {
+            // Board WebSocket
+            boardSocket = new WebSocket('ws://localhost:8080/ws/board');
+            
+            boardSocket.onopen = () => {
+                console.log('Board WebSocket connected');
+                document.getElementById('createBoard').click();
+            };
+
+            boardSocket.onmessage = (event) => {
+                const data = JSON.parse(event.data);
+                if (data.type === 'stroke') {
+                    drawStroke(data);
+                } else if (data.type === 'boardState') {
+                    // Handle initial board state
+                    data.strokes.forEach(drawStroke);
+                }
+            };
+
+            boardSocket.onerror = (error) => {
+                console.error('Board WebSocket error:', error);
+            };
+
+            boardSocket.onclose = () => {
+                console.log('Board WebSocket disconnected');
+            };
+
+            // Chat WebSocket
+            chatSocket = new WebSocket('ws://localhost:8080/ws/chat');
+            
+            chatSocket.onopen = () => {
+                console.log('Chat WebSocket connected');
+                // Register session
+                chatSocket.send(JSON.stringify({
+                    type: 'register',
+                    sessionId: sessionId,
+                    username: username
+                }));
+            };
+
+            chatSocket.onmessage = (event) => {
+                const message = JSON.parse(event.data);
+                displayMessage(message);
+            };
+
+            chatSocket.onerror = (error) => {
+                console.error('Chat WebSocket error:', error);
+            };
+
+            chatSocket.onclose = () => {
+                console.log('Chat WebSocket disconnected');
+            };
+        }
+
+        // Drawing functions
+        function drawStroke(stroke) {
+            ctx.beginPath();
+            ctx.moveTo(stroke.startX, stroke.startY);
+            ctx.lineTo(stroke.endX, stroke.endY);
+            ctx.strokeStyle = stroke.color;
+            ctx.lineWidth = stroke.size;
+            ctx.lineCap = 'round';
+            ctx.stroke();
+        }
+
+        // Event listeners for drawing
+        canvas.addEventListener('mousedown', startDrawing);
+        canvas.addEventListener('mousemove', draw);
+        canvas.addEventListener('mouseup', stopDrawing);
+        canvas.addEventListener('mouseout', stopDrawing);
+
+        function startDrawing(e) {
+            isDrawing = true;
+            [lastX, lastY] = [e.offsetX, e.offsetY];
+        }
+
+        function draw(e) {
+            if (!isDrawing) return;
+            
+            const stroke = {
+                type: 'stroke',
+                boardId: currentBoardId,
+                sessionId: sessionId,
+                startX: lastX,
+                startY: lastY,
+                endX: e.offsetX,
+                endY: e.offsetY,
+                color: currentColor,
+                size: currentSize
+            };
+
+            drawStroke(stroke);
+            boardSocket.send(JSON.stringify(stroke));
+
+            [lastX, lastY] = [e.offsetX, e.offsetY];
+        }
+
+        function stopDrawing() {
+            isDrawing = false;
+        }
+
+        // Control event listeners
+        document.getElementById('createBoard').addEventListener('click', () => {
+            boardSocket.send(JSON.stringify({ type: 'createBoard' }));
+        });
+
+        document.getElementById('clearBoard').addEventListener('click', () => {
+            boardSocket.send(JSON.stringify({ 
+                type: 'clearBoard',
+                boardId: currentBoardId
+            }));
+        });
+
+        document.getElementById('undo').addEventListener('click', () => {
+            boardSocket.send(JSON.stringify({ 
+                type: 'undo',
+                boardId: currentBoardId
+            }));
+        });
+
+        document.getElementById('redo').addEventListener('click', () => {
+            boardSocket.send(JSON.stringify({ 
+                type: 'redo',
+                boardId: currentBoardId
+            }));
+        });
+
+        document.getElementById('colorPicker').addEventListener('change', (e) => {
+            currentColor = e.target.value;
+        });
+
+        document.getElementById('sizeSlider').addEventListener('change', (e) => {
+            currentSize = e.target.value;
+        });
+
+        // Chat functions
+        function displayMessage(message) {
+            const chatContainer = document.getElementById('chatMessages');
+            const messageDiv = document.createElement('div');
+            messageDiv.className = `message ${message.fromUser ? 'user-message' : 'ai-message'}`;
+            messageDiv.textContent = message.message;
+            chatContainer.appendChild(messageDiv);
+            chatContainer.scrollTop = chatContainer.scrollHeight;
+        }
+
+        document.getElementById('sendMessage').addEventListener('click', () => {
+            const input = document.getElementById('messageInput');
+            const message = input.value.trim();
+            
+            if (message) {
+                const chatMessage = {
+                    type: 'message',
+                    sessionId: sessionId,
+                    message: message,
+                    fromUser: true
+                };
+                
+                chatSocket.send(JSON.stringify(chatMessage));
+                input.value = '';
+            }
+        });
+
+        document.getElementById('messageInput').addEventListener('keypress', (e) => {
+            if (e.key === 'Enter') {
+                document.getElementById('sendMessage').click();
+            }
+        });
+
+        // Utility functions
+        function generateSessionId() {
+            return 'session-' + Math.random().toString(36).substr(2, 9);
+        }
+
+        // Initialize
+        initWebSockets();
+    </script>
+</body>
+</html> 

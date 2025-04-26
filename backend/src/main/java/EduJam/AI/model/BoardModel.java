@@ -4,6 +4,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.Stack;
+import java.util.UUID;
 
 /**
  * Thread-safe model representing a collaborative whiteboard.
@@ -21,6 +22,7 @@ public class BoardModel {
     private String backgroundColor;
     private boolean showGrid;
     private int gridSize;
+    private final String id;
 
     public BoardModel() {
         this.strokes = new CopyOnWriteArrayList<>();
@@ -33,6 +35,7 @@ public class BoardModel {
         this.backgroundColor = "#FFFFFF";
         this.showGrid = false;
         this.gridSize = 20;
+        this.id = UUID.randomUUID().toString();
     }
 
     /**
@@ -149,10 +152,15 @@ public class BoardModel {
         this.gridSize = gridSize;
     }
 
+    public String getId() {
+        return id;
+    }
+
     @Override
     public String toString() {
         return "BoardModel{" +
-                "numberOfStrokes=" + strokes.size() +
+                "id='" + id + '\'' +
+                ", numberOfStrokes=" + strokes.size() +
                 ", width=" + width +
                 ", height=" + height +
                 ", backgroundColor='" + backgroundColor + '\'' +
