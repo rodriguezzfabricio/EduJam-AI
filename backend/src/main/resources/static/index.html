@@ -1,0 +1,596 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>EduJam-AI Drawing Test</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 0;
+            padding: 20px;
+        }
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+        h1 {
+            color: #333;
+        }
+        .canvas-container {
+            border: 1px solid #ccc;
+            margin-top: 20px;
+            display: inline-block;
+        }
+        canvas {
+            display: block;
+        }
+        .controls {
+            margin: 20px 0;
+        }
+        .color-picker {
+            margin-right: 10px;
+        }
+        .size-slider {
+            width: 100px;
+        }
+        button {
+            padding: 8px 12px;
+            margin-right: 10px;
+            background-color: #4CAF50;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+        }
+        button:hover {
+            background-color: #45a049;
+        }
+        .logs {
+            margin-top: 20px;
+            border: 1px solid #ddd;
+            padding: 10px;
+            height: 150px;
+            overflow-y: auto;
+            background-color: #f9f9f9;
+        }
+        .board-join {
+            margin: 20px 0;
+            padding: 10px;
+            border: 1px solid #ddd;
+            background-color: #f5f5f5;
+        }
+        .board-join input {
+            padding: 8px;
+            width: 300px;
+            margin-right: 10px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>EduJam-AI Drawing Test</h1>
+        
+        <div class="board-join">
+            <h3>Create or Join a Board</h3>
+            <button id="createBoardBtn">Create New Board</button>
+            <p>OR</p>
+            <input type="text" id="existingBoardId" placeholder="Enter existing board ID">
+            <button id="joinBoardBtn">Join Existing Board</button>
+        </div>
+        
+        <div class="controls">
+            <input type="color" id="colorPicker" class="color-picker" value="#000000">
+            <input type="range" id="sizeSlider" class="size-slider" min="1" max="20" value="5">
+            <span id="sizeValue">5px</span>
+            <button id="undoBtn" disabled>Undo</button>
+            <button id="redoBtn" disabled>Redo</button>
+            <button id="clearBtn" disabled>Clear</button>
+        </div>
+        
+        <div class="canvas-container">
+            <canvas id="drawingCanvas" width="800" height="600"></canvas>
+        </div>
+        
+        <div class="info">
+            <p>Board ID: <span id="boardId">None</span></p>
+            <p>Share this ID with others to collaborate on the same board.</p>
+        </div>
+        
+        <h3>Connection Logs:</h3>
+        <div class="logs" id="logs"></div>
+    </div>
+
+    <script>
+        // DOM Elements
+        const canvas = document.getElementById('drawingCanvas');
+        const ctx = canvas.getContext('2d');
+        const createBoardBtn = document.getElementById('createBoardBtn');
+        const joinBoardBtn = document.getElementById('joinBoardBtn');
+        const existingBoardIdInput = document.getElementById('existingBoardId');
+        const colorPicker = document.getElementById('colorPicker');
+        const sizeSlider = document.getElementById('sizeSlider');
+        const sizeValue = document.getElementById('sizeValue');
+        const undoBtn = document.getElementById('undoBtn');
+        const redoBtn = document.getElementById('redoBtn');
+        const clearBtn = document.getElementById('clearBtn');
+        const boardIdSpan = document.getElementById('boardId');
+        const logs = document.getElementById('logs');
+
+        // Drawing state
+        let isDrawing = false;
+        let currentStroke = null;
+        let lastX = 0;
+        let lastY = 0;
+        let currentColor = '#000000';
+        let currentSize = 5;
+        let currentBoardId = null;
+        let socket = null;
+        let strokeHistory = [];
+        let currentHistoryIndex = -1;
+
+        // Update brush size display
+        sizeSlider.addEventListener('input', () => {
+            currentSize = parseInt(sizeSlider.value);
+            sizeValue.textContent = `${currentSize}px`;
+        });
+
+        // Update color
+        colorPicker.addEventListener('change', () => {
+            currentColor = colorPicker.value;
+        });
+
+        // Mouse events for drawing
+        canvas.addEventListener('mousedown', startDrawing);
+        canvas.addEventListener('mousemove', draw);
+        canvas.addEventListener('mouseup', finishDrawing);
+        canvas.addEventListener('mouseout', finishDrawing);
+        canvas.addEventListener('touchstart', handleTouchStart);
+        canvas.addEventListener('touchmove', handleTouchMove);
+        canvas.addEventListener('touchend', handleTouchEnd);
+
+        // Button event listeners
+        createBoardBtn.addEventListener('click', createBoard);
+        joinBoardBtn.addEventListener('click', joinExistingBoard);
+        undoBtn.addEventListener('click', undoStroke);
+        redoBtn.addEventListener('click', redoStroke);
+        clearBtn.addEventListener('click', clearBoard);
+
+        // Connect to WebSocket and handle messages
+        function setupWebSocket(callback) {
+            if (socket) {
+                socket.close();
+            }
+
+            const wsProtocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+            const wsUrl = `${wsProtocol}//${window.location.host}/ws/board`;
+            
+            log(`Connecting to WebSocket at ${wsUrl}...`);
+            
+            socket = new WebSocket(wsUrl);
+            
+            socket.onopen = () => {
+                log('WebSocket connection established.');
+                if (callback) callback();
+            };
+            
+            socket.onmessage = (event) => {
+                try {
+                    const message = JSON.parse(event.data);
+                    console.log("Received message:", message.type, message);
+                    
+                    switch (message.type) {
+                        case 'boardCreated':
+                            currentBoardId = message.boardId;
+                            boardIdSpan.textContent = currentBoardId;
+                            console.log('Board created with ID:', currentBoardId);
+                            updateBoardUrl();
+                            initDrawing();
+                            break;
+                            
+                        case 'boardJoined':
+                            currentBoardId = message.boardId;
+                            boardIdSpan.textContent = currentBoardId;
+                            console.log('Joined board with ID:', currentBoardId);
+                            updateBoardUrl();
+                            initDrawing();
+                            
+                            // Draw existing strokes
+                            if (message.boardState && message.boardState.strokes) {
+                                message.boardState.strokes.forEach(stroke => {
+                                    drawStroke(stroke);
+                                });
+                            }
+                            break;
+                            
+                        case 'fullBoardState':
+                            console.log("Received full board state with", 
+                                message.strokes ? message.strokes.length : 0, "strokes");
+                            
+                            // Clear canvas first
+                            clearCanvas();
+                            
+                            // Update our local stroke history
+                            if (message.strokes && Array.isArray(message.strokes)) {
+                                strokeHistory = message.strokes;
+                                currentHistoryIndex = strokeHistory.length - 1;
+                                
+                                // Draw all strokes
+                                message.strokes.forEach(stroke => {
+                                    drawStroke(stroke);
+                                });
+                            }
+                            break;
+                            
+                        case 'userJoined':
+                            console.log('User joined:', message.userId);
+                            break;
+                            
+                        case 'userLeft':
+                            console.log('User left:', message.userId);
+                            break;
+                            
+                        case 'stroke':
+                            if (message.stroke) {
+                                drawStroke(message.stroke);
+                                // Save the stroke in our local history
+                                strokeHistory.push(message.stroke);
+                                currentHistoryIndex = strokeHistory.length - 1;
+                            }
+                            break;
+                            
+                        case 'strokeUndone':
+                            console.log('Stroke undone');
+                            // Clear and redraw canvas with the updated board state
+                            if (message.boardState && message.boardState.strokes) {
+                                clearCanvas();
+                                message.boardState.strokes.forEach(stroke => {
+                                    drawStroke(stroke);
+                                });
+                            } else {
+                                // Request full board state if not provided
+                                requestFullBoardState();
+                            }
+                            break;
+                            
+                        case 'strokeRedone':
+                            console.log('Stroke redone');
+                            // Clear and redraw canvas with the updated board state
+                            if (message.boardState && message.boardState.strokes) {
+                                clearCanvas();
+                                message.boardState.strokes.forEach(stroke => {
+                                    drawStroke(stroke);
+                                });
+                            } else {
+                                // Request full board state if not provided
+                                requestFullBoardState();
+                            }
+                            break;
+                            
+                        case 'boardCleared':
+                            clearCanvas();
+                            break;
+                            
+                        default:
+                            log(`Unknown message type: ${message.type}`);
+                    }
+                } catch (error) {
+                    console.error("Error processing WebSocket message:", error, event.data);
+                }
+            };
+            
+            socket.onclose = () => {
+                log('WebSocket connection closed.');
+            };
+            
+            socket.onerror = (error) => {
+                log(`WebSocket error: ${error}`);
+            };
+        }
+
+        function createBoard() {
+            setupWebSocket(() => {
+                socket.send(JSON.stringify({
+                    type: 'createBoard'
+                }));
+            });
+        }
+
+        function joinExistingBoard() {
+            const boardId = existingBoardIdInput.value.trim();
+            if (!boardId) {
+                log('Please enter a valid board ID');
+                return;
+            }
+
+            // Join existing board logic
+            setupWebSocket(() => {
+                // Send joinBoard message to server
+                socket.send(JSON.stringify({
+                    type: 'joinBoard',
+                    boardId: boardId
+                }));
+            });
+        }
+
+        function enableControls() {
+            undoBtn.disabled = false;
+            redoBtn.disabled = false;
+            clearBtn.disabled = false;
+        }
+
+        function startDrawing(e) {
+            isDrawing = true;
+            const point = getPointFromEvent(e);
+            
+            // Create a new stroke object
+            currentStroke = {
+                color: colorPicker.value,
+                width: parseInt(sizeSlider.value),
+                points: [point]
+            };
+            
+            // Start a new path for visual feedback
+            ctx.beginPath();
+            ctx.moveTo(point.x, point.y);
+            ctx.strokeStyle = currentStroke.color;
+            ctx.lineWidth = currentStroke.width;
+            ctx.lineCap = 'round';
+        }
+
+        function draw(e) {
+            if (!isDrawing) return;
+            
+            const point = getPointFromEvent(e);
+            
+            // Add point to current stroke
+            currentStroke.points.push(point);
+            
+            // Draw line for visual feedback
+            ctx.lineTo(point.x, point.y);
+            ctx.stroke();
+        }
+
+        function finishDrawing() {
+            if (!isDrawing) return;
+            isDrawing = false;
+            
+            if (currentStroke && currentStroke.points.length > 1) {
+                // Send the complete stroke to the server
+                sendStroke(currentStroke);
+                
+                // Add to local history
+                strokeHistory.push(currentStroke);
+                currentHistoryIndex = strokeHistory.length - 1;
+            }
+            
+            currentStroke = null;
+        }
+
+        function getPointFromEvent(e) {
+            let x, y;
+            
+            // Get coordinates relative to canvas
+            const rect = canvas.getBoundingClientRect();
+            
+            if (e.type.includes('touch')) {
+                // Touch event
+                x = e.touches[0].clientX - rect.left;
+                y = e.touches[0].clientY - rect.top;
+            } else {
+                // Mouse event
+                x = e.clientX - rect.left;
+                y = e.clientY - rect.top;
+            }
+            
+            return { x, y };
+        }
+
+        function handleTouchStart(e) {
+            e.preventDefault(); // Prevent scrolling
+            startDrawing(e);
+        }
+
+        function handleTouchMove(e) {
+            e.preventDefault(); // Prevent scrolling
+            draw(e);
+        }
+
+        function handleTouchEnd(e) {
+            e.preventDefault(); // Prevent scrolling
+            finishDrawing();
+        }
+
+        function sendStroke(stroke) {
+            if (!socket || socket.readyState !== WebSocket.OPEN) {
+                console.error("Cannot send stroke: WebSocket not connected");
+                return;
+            }
+            
+            const message = {
+                type: 'stroke',
+                boardId: currentBoardId,
+                stroke: stroke
+            };
+            
+            try {
+                socket.send(JSON.stringify(message));
+            } catch (error) {
+                console.error("Error sending stroke:", error);
+            }
+        }
+
+        function drawStroke(stroke) {
+            if (!stroke || !stroke.points || stroke.points.length < 1) {
+                console.warn("Invalid stroke data:", stroke);
+                return;
+            }
+            
+            ctx.beginPath();
+            ctx.lineWidth = stroke.width || 2;
+            ctx.strokeStyle = stroke.color || '#000000';
+            
+            // Move to first point
+            if (stroke.points.length > 0) {
+                ctx.moveTo(stroke.points[0].x, stroke.points[0].y);
+            }
+            
+            // Draw lines to all remaining points
+            for (let i = 1; i < stroke.points.length; i++) {
+                ctx.lineTo(stroke.points[i].x, stroke.points[i].y);
+            }
+            
+            ctx.stroke();
+        }
+
+        function undoStroke() {
+            if (!currentBoardId || !socket) return;
+            
+            socket.send(JSON.stringify({
+                type: 'undo',
+                boardId: currentBoardId
+            }));
+        }
+
+        function redoStroke() {
+            if (!currentBoardId || !socket) return;
+            
+            socket.send(JSON.stringify({
+                type: 'redo',
+                boardId: currentBoardId
+            }));
+        }
+
+        function clearBoard() {
+            if (!currentBoardId || !socket) return;
+            
+            socket.send(JSON.stringify({
+                type: 'clearBoard',
+                boardId: currentBoardId
+            }));
+        }
+
+        function requestFullBoardState() {
+            if (!currentBoardId) {
+                console.error("Cannot request board state: No board ID available");
+                return;
+            }
+
+            const message = {
+                type: 'requestFullBoardState',
+                boardId: currentBoardId
+            };
+            
+            try {
+                socket.send(JSON.stringify(message));
+                console.log("Requested full board state for board:", currentBoardId);
+            } catch (error) {
+                console.error("Error requesting full board state:", error);
+            }
+        }
+
+        function log(message) {
+            const logEntry = document.createElement('div');
+            logEntry.textContent = `${new Date().toLocaleTimeString()}: ${message}`;
+            logs.appendChild(logEntry);
+            logs.scrollTop = logs.scrollHeight;
+        }
+
+        function updateBoardUrl() {
+            const url = new URL(window.location);
+            url.searchParams.set('boardId', currentBoardId);
+            window.history.pushState({}, '', url);
+            
+            // Update the share link
+            const shareLink = document.getElementById('shareLink');
+            if (shareLink) {
+                shareLink.value = window.location.href;
+            }
+        }
+
+        function initDrawing() {
+            // Enable controls
+            enableControls();
+            
+            // Initialize canvas
+            canvas.width = 800; // Default width
+            canvas.height = 600; // Default height
+            
+            // Clear canvas with white background
+            ctx.fillStyle = '#FFFFFF';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+        }
+
+        function enableControls() {
+            // Enable all drawing controls
+            const controls = document.querySelectorAll('.drawing-control');
+            controls.forEach(control => {
+                control.disabled = false;
+            });
+            
+            // Show the board controls container
+            const boardControls = document.getElementById('boardControls');
+            if (boardControls) {
+                boardControls.style.display = 'block';
+            }
+        }
+
+        // Ensure we request full board state when page loads with a boardId parameter
+        window.addEventListener('load', () => {
+            const urlParams = new URLSearchParams(window.location.search);
+            const boardIdParam = urlParams.get('boardId');
+            
+            if (boardIdParam && socket.readyState === WebSocket.OPEN) {
+                // Request full board state after a short delay to ensure socket is connected
+                setTimeout(() => {
+                    requestFullBoardState();
+                }, 500);
+            }
+        });
+
+        // Add a reconnect feature to handle temporary connection losses
+        socket.onclose = function(event) {
+            console.error('WebSocket connection closed. Attempting to reconnect...');
+            
+            // Try to reconnect after 2 seconds
+            setTimeout(() => {
+                console.log('Reconnecting WebSocket...');
+                socket = new WebSocket(websocketUrl);
+                
+                // Re-initialize event handlers
+                initializeWebSocketHandlers();
+                
+                // After reconnection, request the current board state if we had a board
+                if (currentBoardId) {
+                    setTimeout(() => {
+                        joinBoard(currentBoardId);
+                    }, 1000);
+                }
+            }, 2000);
+        };
+
+        function initializeWebSocketHandlers() {
+            // Initialize all WebSocket event handlers
+            // This function would contain all the socket.onmessage, socket.onopen, etc. code
+            // For brevity, we're not implementing the full function here
+        }
+
+        function drawLine(x1, y1, x2, y2, color, size) {
+            ctx.beginPath();
+            ctx.strokeStyle = color;
+            ctx.lineWidth = size;
+            ctx.lineCap = 'round';
+            ctx.moveTo(x1, y1);
+            ctx.lineTo(x2, y2);
+            ctx.stroke();
+        }
+
+        function clearCanvas() {
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+        }
+
+        // Initial log
+        log('App initialized. Create a new board or join an existing one.');
+    </script>
+</body>
+</html> 

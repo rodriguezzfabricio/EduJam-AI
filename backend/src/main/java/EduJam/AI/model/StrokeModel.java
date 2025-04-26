@@ -1,47 +1,46 @@
 package EduJam.AI.model;
 
-import java.time.Instant;
+import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 
 /**
- * Represents a stroke drawn on a canvas with start and end coordinates,
+ * Represents a stroke drawn on a canvas with a series of points,
  * color, and brush size information. This model is used to track drawing
  * operations in the application.
  */
 public class StrokeModel {
     private String id;
     private String boardId;
-    private String userId;
-    private Instant timestamp;
-    private double startX;
-    private double startY;
-    private double endX;
-    private double endY;
+    private String sessionId;
+    private List<Map<String, Integer>> points;
     private String color;
-    private int size;
+    private int thickness;
+    private String tool;
+    private long timestamp;
 
     /**
-     * Default constructor. Creates an empty stroke model with generated ID and current timestamp.
+     * Default constructor. Creates an empty stroke model with generated ID, current timestamp,
+     * and an empty points list.
      */
     public StrokeModel() {
         this.id = UUID.randomUUID().toString();
-        this.timestamp = Instant.now();
+        this.timestamp = System.currentTimeMillis();
     }
 
     /**
      * Creates a new stroke model with the specified parameters.
      */
-    public StrokeModel(String boardId, String userId, double startX, double startY, 
-                      double endX, double endY, String color, int size) {
-        this();
-        setBoardId(boardId);
-        setUserId(userId);
-        setStartX(startX);
-        setStartY(startY);
-        setEndX(endX);
-        setEndY(endY);
-        setColor(color);
-        setSize(size);
+    public StrokeModel(String boardId, String sessionId, List<Map<String, Integer>> points, 
+                       String color, int thickness, String tool) {
+        this.id = UUID.randomUUID().toString();
+        this.boardId = boardId;
+        this.sessionId = sessionId;
+        this.points = points;
+        this.color = color;
+        this.thickness = thickness;
+        this.tool = tool;
+        this.timestamp = System.currentTimeMillis();
     }
 
     // Getters and Setters
@@ -49,69 +48,32 @@ public class StrokeModel {
         return id;
     }
 
+    public void setId(String id) {
+        this.id = id;
+    }
+
     public String getBoardId() {
         return boardId;
     }
 
     public void setBoardId(String boardId) {
-        if (boardId == null || boardId.trim().isEmpty()) {
-            throw new IllegalArgumentException("Board ID cannot be null or empty");
-        }
         this.boardId = boardId;
     }
 
-    public String getUserId() {
-        return userId;
+    public String getSessionId() {
+        return sessionId;
     }
 
-    public void setUserId(String userId) {
-        if (userId == null || userId.trim().isEmpty()) {
-            throw new IllegalArgumentException("User ID cannot be null or empty");
-        }
-        this.userId = userId;
+    public void setSessionId(String sessionId) {
+        this.sessionId = sessionId;
     }
 
-    public Instant getTimestamp() {
-        return timestamp;
+    public List<Map<String, Integer>> getPoints() {
+        return points;
     }
 
-    public void setTimestamp(Instant timestamp) {
-        if (timestamp == null) {
-            throw new IllegalArgumentException("Timestamp cannot be null");
-        }
-        this.timestamp = timestamp;
-    }
-
-    public double getStartX() {
-        return startX;
-    }
-
-    public void setStartX(double startX) {
-        this.startX = startX;
-    }
-
-    public double getStartY() {
-        return startY;
-    }
-
-    public void setStartY(double startY) {
-        this.startY = startY;
-    }
-
-    public double getEndX() {
-        return endX;
-    }
-
-    public void setEndX(double endX) {
-        this.endX = endX;
-    }
-
-    public double getEndY() {
-        return endY;
-    }
-
-    public void setEndY(double endY) {
-        this.endY = endY;
+    public void setPoints(List<Map<String, Integer>> points) {
+        this.points = points;
     }
 
     public String getColor() {
@@ -119,21 +81,31 @@ public class StrokeModel {
     }
 
     public void setColor(String color) {
-        if (color == null || color.trim().isEmpty()) {
-            throw new IllegalArgumentException("Color cannot be null or empty");
-        }
         this.color = color;
     }
 
-    public int getSize() {
-        return size;
+    public int getThickness() {
+        return thickness;
     }
 
-    public void setSize(int size) {
-        if (size <= 0) {
-            throw new IllegalArgumentException("Brush size must be greater than 0");
-        }
-        this.size = size;
+    public void setThickness(int thickness) {
+        this.thickness = thickness;
+    }
+
+    public String getTool() {
+        return tool;
+    }
+
+    public void setTool(String tool) {
+        this.tool = tool;
+    }
+
+    public long getTimestamp() {
+        return timestamp;
+    }
+
+    public void setTimestamp(long timestamp) {
+        this.timestamp = timestamp;
     }
 
     @Override
@@ -141,14 +113,12 @@ public class StrokeModel {
         return "StrokeModel{" +
                 "id='" + id + '\'' +
                 ", boardId='" + boardId + '\'' +
-                ", userId='" + userId + '\'' +
-                ", timestamp=" + timestamp +
-                ", startX=" + startX +
-                ", startY=" + startY +
-                ", endX=" + endX +
-                ", endY=" + endY +
+                ", sessionId='" + sessionId + '\'' +
+                ", points=" + points +
                 ", color='" + color + '\'' +
-                ", size=" + size +
+                ", thickness=" + thickness +
+                ", tool='" + tool + '\'' +
+                ", timestamp=" + timestamp +
                 '}';
     }
 }
