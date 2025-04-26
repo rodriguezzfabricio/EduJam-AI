@@ -73,9 +73,12 @@ EduJam-AI/
 - RESTful API with Spring Boot
 - JPA/Hibernate for database operations
 - Next.js 14 with App Router
-- TypeScript for type safety![ChatGPT Image Apr 26, 2025, 01_25_07 PM](https://github.com/user-attachments/assets/23db07f7-0005-4514-9e1d-bb19eafab4d7)
+- TypeScript for type safety
 
 - Tailwind CSS for styling
 - Shadcn UI components
-![Uploading ChatGPT Image Apr 26, 2025, 01_25_07 PM.png…]()
+
+![ChatGPT Image Apr 26, 2025, 05_25_20 PM](https://github.com/user-attachments/assets/f5c04ce4-11f3-41f1-8a13-2455d874c21e)
+
+
 
