@@ -1,3 +1,9 @@
+package EduJam.AI.controller;
+
+import EduJam.AI.dto.ChatBotDto;
+import EduJam.AI.service.ChatService;
+import org.springframework.web.bind.annotation.*;
+
 @RestController
 @RequestMapping("/api/chat")
 public class ChatController {

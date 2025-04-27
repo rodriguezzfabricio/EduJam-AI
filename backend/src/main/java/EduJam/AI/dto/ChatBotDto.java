@@ -7,8 +7,8 @@ package EduJam.AI.dto;
 public class ChatBotDto {
     private String message;
 
-    public ChatRequest(){}
-    public ChatRequest(String message){
+    public ChatBotDto(){}
+    public ChatBotDto(String message){
         this.message = message;
     }
 
@@ -18,5 +18,5 @@ public class ChatBotDto {
     
     public void setMessage(String message){
         this.message = message;
-    }    
+    }
 }

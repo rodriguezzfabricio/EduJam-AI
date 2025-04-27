@@ -4,6 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>EduJam-AI Drawing Test</title>
+    <link rel="stylesheet" href="components/Chat.css">
     <style>
         body {
             font-family: Arial, sans-serif;
@@ -65,6 +66,93 @@
             width: 300px;
             margin-right: 10px;
         }
+
+        /* New Chat Styles */
+        .chat-sidebar {
+            position: fixed;
+            right: 20px;
+            top: 20px;
+            width: 300px;
+            background: white;
+            border: 1px solid #ccc;
+            border-radius: 8px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+            display: flex;
+            flex-direction: column;
+            height: calc(100vh - 40px);
+        }
+
+        .chat-header {
+            padding: 10px;
+            background: #f5f5f5;
+            border-bottom: 1px solid #ddd;
+            border-radius: 8px 8px 0 0;
+        }
+
+        .chat-messages {
+            flex: 1;
+            overflow-y: auto;
+            padding: 10px;
+            background: #fff;
+        }
+
+        .chat-input {
+            padding: 10px;
+            border-top: 1px solid #ddd;
+            background: #f5f5f5;
+            border-radius: 0 0 8px 8px;
+        }
+
+        .chat-input input {
+            width: 100%;
+            padding: 8px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            margin-bottom: 5px;
+        }
+
+        .chat-input button {
+            width: 100%;
+            padding: 8px;
+            background: #4CAF50;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+        }
+
+        .message {
+            margin-bottom: 10px;
+            padding: 8px;
+            border-radius: 4px;
+            max-width: 80%;
+        }
+
+        .user-message {
+            background: #e3f2fd;
+            margin-left: auto;
+        }
+
+        .bot-message {
+            background: #f5f5f5;
+            margin-right: auto;
+        }
+
+        .message.error-message {
+            background-color: #ffebee;
+            color: #c62828;
+            padding: 8px;
+            margin: 4px 0;
+            border-radius: 4px;
+            text-align: center;
+            font-style: italic;
+        }
+
+        .typing-indicator {
+            color: #666;
+            font-style: italic;
+            padding: 5px;
+        }
     </style>
 </head>
 <body>
@@ -101,6 +189,18 @@
         <div class="logs" id="logs"></div>
     </div>
 
+    <!-- Chat Interface -->
+    <div class="chat-sidebar">
+        <div class="chat-header">
+            <h3>AI Assistant</h3>
+        </div>
+        <div class="chat-messages" id="chatMessages"></div>
+        <div class="chat-input">
+            <input type="text" id="chatInput" placeholder="Ask me anything...">
+            <button id="sendChatMessage" onclick="sendChatMessage()">Send</button>
+        </div>
+    </div>
+
     <script>
         // DOM Elements
         const canvas = document.getElementById('drawingCanvas');
@@ -116,6 +216,8 @@
         const clearBtn = document.getElementById('clearBtn');
         const boardIdSpan = document.getElementById('boardId');
         const logs = document.getElementById('logs');
+        const chatInput = document.getElementById('chatInput');
+        const sendChatButton = document.getElementById('sendChatMessage');
 
         // Drawing state
         let isDrawing = false;
@@ -128,6 +230,9 @@
         let socket = null;
         let strokeHistory = [];
         let currentHistoryIndex = -1;
+
+        // Chat-related variables
+        let chatSocket = null;
 
         // Update brush size display
         sizeSlider.addEventListener('input', () => {
@@ -150,90 +255,77 @@
         canvas.addEventListener('touchend', handleTouchEnd);
 
         // Button event listeners
-        createBoardBtn.addEventListener('click', createBoard);
-        joinBoardBtn.addEventListener('click', joinExistingBoard);
+        createBoardBtn.addEventListener('click', () => {
+            console.log('Create board button clicked');
+            createBoard();
+        });
+        joinBoardBtn.addEventListener('click', () => {
+            console.log('Join board button clicked');
+            joinExistingBoard();
+        });
         undoBtn.addEventListener('click', undoStroke);
         redoBtn.addEventListener('click', redoStroke);
         clearBtn.addEventListener('click', clearBoard);
 
-        // Connect to WebSocket and handle messages
-        function setupWebSocket(callback) {
+        // Initialize WebSocket for board
+        function setupWebSocket() {
             if (socket) {
+                console.log('Closing existing socket connection');
                 socket.close();
             }
 
             const wsProtocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
             const wsUrl = `${wsProtocol}//${window.location.host}/ws/board`;
             
-            log(`Connecting to WebSocket at ${wsUrl}...`);
+            console.log('Connecting to WebSocket at:', wsUrl);
             
             socket = new WebSocket(wsUrl);
             
             socket.onopen = () => {
-                log('WebSocket connection established.');
-                if (callback) callback();
+                console.log('Board WebSocket connection established. ReadyState:', socket.readyState);
+                log('Board WebSocket connection established.');
+            };
+            
+            socket.onclose = (event) => {
+                console.log('Board WebSocket connection closed. Code:', event.code, 'Reason:', event.reason);
+                log('Board WebSocket connection closed.');
+                // Only attempt to reconnect if we're not deliberately closing
+                if (!event.wasClean) {
+                    setTimeout(() => {
+                        console.log('Attempting to reconnect...');
+                        setupWebSocket();
+                    }, 3000);
+                }
+            };
+            
+            socket.onerror = (error) => {
+                console.error('Board WebSocket error:', error);
+                log('Board WebSocket error occurred');
             };
             
             socket.onmessage = (event) => {
                 try {
                     const message = JSON.parse(event.data);
-                    console.log("Received message:", message.type, message);
+                    console.log("Received board message:", message);
+                    
+                    if (message.error) {
+                        console.error("Server error:", message.error);
+                        log('Error: ' + message.error);
+                        return;
+                    }
                     
                     switch (message.type) {
                         case 'boardCreated':
-                            currentBoardId = message.boardId;
-                            boardIdSpan.textContent = currentBoardId;
-                            console.log('Board created with ID:', currentBoardId);
-                            updateBoardUrl();
-                            initDrawing();
+                            handleBoardCreated(message);
                             break;
                             
                         case 'boardJoined':
-                            currentBoardId = message.boardId;
-                            boardIdSpan.textContent = currentBoardId;
-                            console.log('Joined board with ID:', currentBoardId);
-                            updateBoardUrl();
-                            initDrawing();
-                            
-                            // Draw existing strokes
-                            if (message.boardState && message.boardState.strokes) {
-                                message.boardState.strokes.forEach(stroke => {
-                                    drawStroke(stroke);
-                                });
-                            }
-                            break;
-                            
-                        case 'fullBoardState':
-                            console.log("Received full board state with", 
-                                message.strokes ? message.strokes.length : 0, "strokes");
-                            
-                            // Clear canvas first
-                            clearCanvas();
-                            
-                            // Update our local stroke history
-                            if (message.strokes && Array.isArray(message.strokes)) {
-                                strokeHistory = message.strokes;
-                                currentHistoryIndex = strokeHistory.length - 1;
-                                
-                                // Draw all strokes
-                                message.strokes.forEach(stroke => {
-                                    drawStroke(stroke);
-                                });
-                            }
-                            break;
-                            
-                        case 'userJoined':
-                            console.log('User joined:', message.userId);
-                            break;
-                            
-                        case 'userLeft':
-                            console.log('User left:', message.userId);
+                            handleBoardJoined(message);
                             break;
                             
                         case 'stroke':
                             if (message.stroke) {
                                 drawStroke(message.stroke);
-                                // Save the stroke in our local history
                                 strokeHistory.push(message.stroke);
                                 currentHistoryIndex = strokeHistory.length - 1;
                             }
@@ -241,29 +333,21 @@
                             
                         case 'strokeUndone':
                             console.log('Stroke undone');
-                            // Clear and redraw canvas with the updated board state
                             if (message.boardState && message.boardState.strokes) {
                                 clearCanvas();
                                 message.boardState.strokes.forEach(stroke => {
                                     drawStroke(stroke);
                                 });
-                            } else {
-                                // Request full board state if not provided
-                                requestFullBoardState();
                             }
                             break;
                             
                         case 'strokeRedone':
                             console.log('Stroke redone');
-                            // Clear and redraw canvas with the updated board state
                             if (message.boardState && message.boardState.strokes) {
                                 clearCanvas();
                                 message.boardState.strokes.forEach(stroke => {
                                     drawStroke(stroke);
                                 });
-                            } else {
-                                // Request full board state if not provided
-                                requestFullBoardState();
                             }
                             break;
                             
@@ -272,28 +356,67 @@
                             break;
                             
                         default:
-                            log(`Unknown message type: ${message.type}`);
+                            console.warn('Unknown message type:', message.type);
                     }
                 } catch (error) {
-                    console.error("Error processing WebSocket message:", error, event.data);
+                    console.error("Error processing board message:", error, event.data);
                 }
-            };
-            
-            socket.onclose = () => {
-                log('WebSocket connection closed.');
-            };
-            
-            socket.onerror = (error) => {
-                log(`WebSocket error: ${error}`);
             };
         }
 
+        function handleBoardCreated(message) {
+            currentBoardId = message.boardId;
+            boardIdSpan.textContent = currentBoardId;
+            console.log('Board created with ID:', currentBoardId);
+            updateBoardUrl();
+            initDrawing();
+            setupChatWebSocket(); // Initialize chat after board is created
+        }
+
+        function handleBoardJoined(message) {
+            currentBoardId = message.boardId;
+            boardIdSpan.textContent = currentBoardId;
+            console.log('Joined board with ID:', currentBoardId);
+            updateBoardUrl();
+            initDrawing();
+            setupChatWebSocket(); // Initialize chat after board is joined
+            
+            // Draw existing strokes
+            if (message.boardState && message.boardState.strokes) {
+                message.boardState.strokes.forEach(stroke => {
+                    drawStroke(stroke);
+                });
+            }
+        }
+
         function createBoard() {
-            setupWebSocket(() => {
+            console.log('Create board function called');
+            console.log('Socket state:', socket ? socket.readyState : 'no socket');
+            
+            if (!socket) {
+                console.log('No socket connection, setting up WebSocket');
+                setupWebSocket();
+                // Wait for connection to establish before sending
+                setTimeout(createBoard, 1000);
+                return;
+            }
+            
+            if (socket.readyState !== WebSocket.OPEN) {
+                console.log('Socket not ready (state:', socket.readyState, '), waiting...');
+                setTimeout(createBoard, 1000);
+                return;
+            }
+            
+            console.log('Sending createBoard message');
+            try {
                 socket.send(JSON.stringify({
                     type: 'createBoard'
                 }));
-            });
+                log('Sent create board request');
+            } catch (error) {
+                console.error('Error sending create board message:', error);
+                log('Error creating board: ' + error.message);
+            }
         }
 
         function joinExistingBoard() {
@@ -303,14 +426,16 @@
                 return;
             }
 
-            // Join existing board logic
-            setupWebSocket(() => {
-                // Send joinBoard message to server
-                socket.send(JSON.stringify({
-                    type: 'joinBoard',
-                    boardId: boardId
-                }));
-            });
+            if (!socket || socket.readyState !== WebSocket.OPEN) {
+                console.error('WebSocket not connected');
+                return;
+            }
+
+            console.log('Joining board:', boardId);
+            socket.send(JSON.stringify({
+                type: 'joinBoard',
+                boardId: boardId
+            }));
         }
 
         function enableControls() {
@@ -591,6 +716,214 @@
 
         // Initial log
         log('App initialized. Create a new board or join an existing one.');
+
+        // Initialize both WebSocket connections
+        window.addEventListener('load', () => {
+            console.log('Page loaded, initializing WebSockets...');
+            setupWebSocket();  // Your existing board WebSocket
+            setupChatWebSocket();  // New chat WebSocket
+        });
+
+        // Initialize chat WebSocket
+        function setupChatWebSocket() {
+            if (chatSocket) {
+                chatSocket.close();
+            }
+
+            console.log('Setting up chat WebSocket...');
+            const wsProtocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+            const wsUrl = `${wsProtocol}//${window.location.host}/ws/chat`;
+            
+            console.log('Connecting to chat WebSocket at:', wsUrl);
+            
+            try {
+                chatSocket = new WebSocket(wsUrl);
+                console.log('Chat WebSocket instance created');
+            } catch (error) {
+                console.error('Error creating chat WebSocket:', error);
+                return;
+            }
+            
+            chatSocket.onopen = () => {
+                console.log('Chat WebSocket connected successfully');
+                console.log('Chat WebSocket readyState:', chatSocket.readyState);
+                log('Chat connection established.');
+                
+                // Clear any existing error messages
+                const chatMessages = document.getElementById('chatMessages');
+                chatMessages.innerHTML = '';
+                
+                // Register the session once connected
+                if (currentBoardId) {
+                    console.log('Registering chat session for board:', currentBoardId);
+                    const registerPayload = {
+                        type: 'register',
+                        sessionId: currentBoardId,
+                        username: 'user-' + currentBoardId.substring(0, 6)
+                    };
+                    chatSocket.send(JSON.stringify(registerPayload));
+                } else {
+                    console.warn('No board ID available for chat registration');
+                    showChatError('Please create or join a board first');
+                }
+            };
+            
+            chatSocket.onmessage = (event) => {
+                console.log('Raw chat message received:', event.data);
+                try {
+                    const message = JSON.parse(event.data);
+                    console.log('Parsed chat message:', message);
+                    
+                    switch (message.type) {
+                        case 'registered':
+                            console.log('Chat session registered:', message);
+                            break;
+                        case 'message':
+                            console.log('Displaying message:', message.message);
+                            if (message.message) {
+                                const chatMessages = document.getElementById('chatMessages');
+                                const messageDiv = document.createElement('div');
+                                messageDiv.className = `message ${message.message.fromUser ? 'user-message' : 'bot-message'}`;
+                                messageDiv.textContent = message.message.content;
+                                chatMessages.appendChild(messageDiv);
+                                chatMessages.scrollTop = chatMessages.scrollHeight;
+                            }
+                            break;
+                        case 'typing':
+                            console.log('Typing indicator:', message.status);
+                            const chatMessages = document.getElementById('chatMessages');
+                            if (message.status) {
+                                if (!document.getElementById('typingIndicator')) {
+                                    const typingDiv = document.createElement('div');
+                                    typingDiv.id = 'typingIndicator';
+                                    typingDiv.className = 'typing-indicator';
+                                    typingDiv.textContent = 'AI is typing...';
+                                    chatMessages.appendChild(typingDiv);
+                                    chatMessages.scrollTop = chatMessages.scrollHeight;
+                                }
+                            } else {
+                                const typingIndicator = document.getElementById('typingIndicator');
+                                if (typingIndicator) {
+                                    typingIndicator.remove();
+                                }
+                            }
+                            break;
+                        case 'error':
+                            console.error('Chat error:', message.error);
+                            const errorDiv = document.createElement('div');
+                            errorDiv.className = 'message error-message';
+                            errorDiv.textContent = 'Error: ' + message.error;
+                            document.getElementById('chatMessages').appendChild(errorDiv);
+                            break;
+                        default:
+                            console.warn('Unknown message type:', message.type);
+                    }
+                } catch (error) {
+                    console.error('Error processing chat message:', error, event.data);
+                }
+            };
+            
+            chatSocket.onclose = (event) => {
+                console.log('Chat WebSocket closed:', event.code, event.reason);
+                log('Chat connection closed.');
+                
+                // Attempt to reconnect after a delay
+                setTimeout(() => {
+                    console.log('Attempting to reconnect chat WebSocket...');
+                    setupChatWebSocket();
+                }, 3000);
+            };
+
+            chatSocket.onerror = (error) => {
+                console.error('Chat WebSocket error:', error);
+                log('Chat connection error: ' + error);
+            };
+        }
+
+        function showChatError(message) {
+            const chatMessages = document.getElementById('chatMessages');
+            const errorDiv = document.createElement('div');
+            errorDiv.className = 'message error-message';
+            errorDiv.textContent = message;
+            chatMessages.appendChild(errorDiv);
+        }
+
+        // Handle sending chat messages
+        function sendChatMessage() {
+            const message = chatInput.value.trim();
+            console.log('Attempting to send message:', message);
+            
+            if (!currentBoardId) {
+                console.error('No board ID available');
+                showChatError('Please create or join a board first');
+                return;
+            }
+            
+            if (!message) {
+                return;
+            }
+            
+            if (!chatSocket || chatSocket.readyState !== WebSocket.OPEN) {
+                console.error('Chat WebSocket not connected');
+                showChatError('Connection error. Please try again.');
+                setupChatWebSocket(); // Attempt to reconnect
+                return;
+            }
+            
+            console.log('Sending chat message...');
+            const payload = {
+                type: 'message',
+                sessionId: currentBoardId,
+                message: message
+            };
+            console.log('Message payload:', payload);
+            
+            try {
+                chatSocket.send(JSON.stringify(payload));
+                chatInput.value = '';
+                
+                // Add user message immediately for better UX
+                const chatMessages = document.getElementById('chatMessages');
+                const messageDiv = document.createElement('div');
+                messageDiv.className = 'message user-message';
+                messageDiv.textContent = message;
+                chatMessages.appendChild(messageDiv);
+                chatMessages.scrollTop = chatMessages.scrollHeight;
+            } catch (error) {
+                console.error('Error sending message:', error);
+                showChatError('Failed to send message. Please try again.');
+            }
+        }
+
+        // Chat event listeners
+        document.addEventListener('DOMContentLoaded', () => {
+            console.log('Setting up chat event listeners...');
+            const sendChatButton = document.getElementById('sendChatMessage');
+            const chatInput = document.getElementById('chatInput');
+            
+            if (!sendChatButton) {
+                console.error('Send chat button not found!');
+            }
+            if (!chatInput) {
+                console.error('Chat input not found!');
+            }
+
+            sendChatButton.addEventListener('click', (e) => {
+                e.preventDefault();
+                console.log('Send button clicked');
+                sendChatMessage();
+            });
+
+            chatInput.addEventListener('keypress', (e) => {
+                if (e.key === 'Enter') {
+                    e.preventDefault();
+                    console.log('Enter key pressed in chat input');
+                    sendChatMessage();
+                }
+            });
+
+            console.log('Chat event listeners set up successfully');
+        });
     </script>
 </body>
 </html> 

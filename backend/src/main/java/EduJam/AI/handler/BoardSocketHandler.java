@@ -96,11 +96,13 @@ public class BoardSocketHandler extends TextWebSocketHandler {
 
     @Override
     protected void handleTextMessage(WebSocketSession session, TextMessage message) throws Exception {
+        log.info("Received message: {}", message.getPayload());
         JsonNode jsonNode = objectMapper.readTree(message.getPayload());
         String type = jsonNode.get("type").asText();
 
         // Touch the session to update activity timestamp
         sessionService.touch(session.getId());
+        log.info("Processing message type: {} from session: {}", type, session.getId());
 
         switch (type) {
             case "createBoard":
@@ -131,11 +133,13 @@ public class BoardSocketHandler extends TextWebSocketHandler {
                 // Client responded to ping, nothing to do
                 break;
             default:
+                log.warn("Unknown message type received: {}", type);
                 sendErrorMessage(session, "Unknown message type: " + type);
         }
     }
 
     private void handleCreateBoard(WebSocketSession session, JsonNode jsonNode) throws Exception {
+        log.info("Creating new board for session: {}", session.getId());
         var board = boardService.createBoard();
         String boardId = board.getId();
         sessionToBoardMap.put(session.getId(), boardId);
@@ -144,29 +148,35 @@ public class BoardSocketHandler extends TextWebSocketHandler {
         Set<WebSocketSession> boardSessions = boardSessionsMap.computeIfAbsent(boardId, k -> ConcurrentHashMap.newKeySet());
         boardSessions.add(session);
 
-        session.sendMessage(new TextMessage(objectMapper.writeValueAsString(Map.of(
-            "type", "boardCreated",
-            "boardId", boardId,
-            "boardState", Map.of(
-                "strokes", board.getStrokes(),
-                "settings", Map.of(
-                    "width", board.getWidth(),
-                    "height", board.getHeight(),
-                    "backgroundColor", board.getBackgroundColor(),
-                    "showGrid", board.isShowGrid(),
-                    "gridSize", board.getGridSize()
-                )
+        Map<String, Object> response = new HashMap<>();
+        response.put("type", "boardCreated");
+        response.put("boardId", boardId);
+        response.put("boardState", Map.of(
+            "strokes", board.getStrokes(),
+            "settings", Map.of(
+                "width", board.getWidth(),
+                "height", board.getHeight(),
+                "backgroundColor", board.getBackgroundColor(),
+                "showGrid", board.isShowGrid(),
+                "gridSize", board.getGridSize()
             )
-        ))));
+        ));
+
+        String responseJson = objectMapper.writeValueAsString(response);
+        log.info("Sending board created response: {}", responseJson);
+        session.sendMessage(new TextMessage(responseJson));
         
-        log.debug("Board created: {} by session: {}", boardId, session.getId());
+        log.info("Board created: {} by session: {}", boardId, session.getId());
     }
 
     private void handleJoinBoard(WebSocketSession session, JsonNode jsonNode) throws IOException {
         String boardId = jsonNode.get("boardId").asText();
+        log.info("Session {} attempting to join board {}", session.getId(), boardId);
+        
         BoardDto board = boardService.getBoardById(boardId);
         
         if (board == null) {
+            log.warn("Board not found: {}", boardId);
             sendErrorMessage(session, "Board not found: " + boardId);
             return;
         }
@@ -185,8 +195,10 @@ public class BoardSocketHandler extends TextWebSocketHandler {
         joinedMessage.put("boardId", boardId);
         
         try {
+            log.info("Broadcasting join message for session {} on board {}", session.getId(), boardId);
             broadcastToBoard(boardId, joinedMessage, session.getId());
         } catch (IOException e) {
+            log.error("Error broadcasting join message", e);
             throw new IOException("Error broadcasting join message", e);
         }
         
@@ -197,9 +209,8 @@ public class BoardSocketHandler extends TextWebSocketHandler {
         confirmationMessage.put("boardState", board);
         
         String confirmationJson = objectMapper.writeValueAsString(confirmationMessage);
+        log.info("Sending join confirmation: {}", confirmationJson);
         session.sendMessage(new TextMessage(confirmationJson));
-        
-        log.debug("Session: {} joined board: {}, active sessions: {}", session.getId(), boardId, boardSessions.size());
     }
 
     private void handleRequestFullState(WebSocketSession session, JsonNode jsonNode) throws IOException {
