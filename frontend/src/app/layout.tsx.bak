@@ -15,8 +15,8 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "MindSync - Interactive Whiteboard with AI Chat",
-  description: "Collaborate in real-time on an interactive whiteboard with AI-powered chat assistance.",
+  title: "EduJam AI - Intelligent Learning Platform",
+  description: "An educational platform powered by AI to help students learn and grow.",
 };
 
 export default function RootLayout({
