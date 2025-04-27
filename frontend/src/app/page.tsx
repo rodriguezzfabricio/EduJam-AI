@@ -9,248 +9,164 @@ import { Send, Maximize2, Minimize2, Loader2, Settings, X } from "lucide-react";
 import { Whiteboard } from "../components/Whiteboard";
 import aiService, { ChatMessage } from "@/services/AIService";
 import { v4 as uuidv4 } from "uuid";
+import Link from "next/link";
 
-export default function Home() {
-  const [query, setQuery] = useState("");
-  const [messages, setMessages] = useState<ChatMessage[]>([]);
-  const [isChatExpanded, setIsChatExpanded] = useState(false);
-  const [isLoading, setIsLoading] = useState(false);
-  const chatEndRef = useRef<HTMLDivElement>(null);
-  const [boardId, setBoardId] = useState<string | null>(null);
-  const [showApiKeyInput, setShowApiKeyInput] = useState(false);
-  const [apiKey, setApiKey] = useState("");
-  const [isApiKeySet, setIsApiKeySet] = useState(false);
-
-  useEffect(() => {
-    // Add welcome message
-    setMessages([
-      {
-        id: "welcome",
-        role: "assistant",
-        content: "Welcome to the interactive whiteboard! I can answer questions about any topic. How can I help you today?",
-        timestamp: Date.now()
-      }
-    ]);
-
-    // Generate a persistent board ID for the home page
-    setBoardId(uuidv4().substring(0, 8));
-
-    // Check if we have an API key in localStorage
-    const savedApiKey = localStorage.getItem('openai-api-key');
-    if (savedApiKey) {
-      setApiKey(savedApiKey);
-      aiService.init(savedApiKey);
-      setIsApiKeySet(true);
-    }
-  }, []);
-
-  // Scroll to bottom of chat when messages change
-  useEffect(() => {
-    if (chatEndRef.current) {
-      chatEndRef.current.scrollIntoView({ behavior: "smooth" });
-    }
-  }, [messages]);
-
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!query.trim()) return;
-
-    // Add user message
-    const userMessage: ChatMessage = {
-      id: `user_${Date.now()}`,
-      role: "user",
-      content: query,
-      timestamp: Date.now()
-    };
-
-    setMessages(prev => [...prev, userMessage]);
-    setQuery("");
-    setIsLoading(true);
-
-    try {
-      // Get AI response
-      const response = await aiService.sendMessage([...messages, userMessage]);
-      setMessages(prev => [...prev, response]);
-    } catch (error) {
-      console.error("Error getting AI response:", error);
-      // Add error message
-      setMessages(prev => [
-        ...prev,
-        {
-          id: `error_${Date.now()}`,
-          role: "assistant",
-          content: "Sorry, I encountered an error. Please try again.",
-          timestamp: Date.now()
-        }
-      ]);
-    } finally {
-      setIsLoading(false);
-    }
-  };
-
-  const toggleChatSize = () => {
-    setIsChatExpanded(!isChatExpanded);
-  };
-
-  const handleSetApiKey = () => {
-    if (apiKey.trim()) {
-      // Save to localStorage and initialize the service
-      localStorage.setItem('openai-api-key', apiKey);
-      aiService.init(apiKey);
-      setIsApiKeySet(true);
-      setShowApiKeyInput(false);
-      // Add confirmation message
-      setMessages(prev => [
-        ...prev,
-        {
-          id: `system_${Date.now()}`,
-          role: "assistant",
-          content: "API key set successfully! I can now provide more accurate and comprehensive responses to your questions.",
-          timestamp: Date.now()
-        }
-      ]);
-    }
-  };
-
-  const clearApiKey = () => {
-    localStorage.removeItem('openai-api-key');
-    setApiKey("");
-    setIsApiKeySet(false);
-    aiService.init("");
-    // Add confirmation message
-    setMessages(prev => [
-      ...prev,
-      {
-        id: `system_${Date.now()}`,
-        role: "assistant",
-        content: "API key removed. I'll continue to provide responses using the simulated mode.",
-        timestamp: Date.now()
-      }
-    ]);
-  };
-
-  const formatTime = (timestamp: number) => {
-    return new Date(timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-  };
-
+export default function HomePage() {
   return (
-    <div className="min-h-screen flex flex-col">
+    <div className="flex min-h-screen flex-col">
       <Navbar />
       
-      <main className="flex-1 flex overflow-hidden">
-        {/* Main whiteboard area */}
-        <div className={`whiteboard-area ${isChatExpanded ? 'hidden md:block md:w-1/2' : 'w-full md:w-3/4'} p-4`}>
-          {boardId && <Whiteboard width={1200} height={800} boardId={boardId} />}
-        </div>
-        
-        {/* Chat sidebar */}
-        <div className={`chat-sidebar ${isChatExpanded ? 'w-full md:w-1/2' : 'w-full md:w-1/4'} border-l border-border bg-card p-4 flex flex-col`}>
-          <div className="flex items-center justify-between mb-4">
-            <h2 className="text-xl font-bold">AI Chat Assistant</h2>
-            <div className="flex items-center gap-2">
-              <Button 
-                variant="ghost" 
-                size="icon" 
-                onClick={() => setShowApiKeyInput(!showApiKeyInput)}
-                title={isApiKeySet ? "Change API Key" : "Set OpenAI API Key"}
-              >
-                <Settings className="h-4 w-4" />
-              </Button>
-              <Button variant="ghost" size="icon" onClick={toggleChatSize}>
-                {isChatExpanded ? <Minimize2 className="h-4 w-4" /> : <Maximize2 className="h-4 w-4" />}
-              </Button>
-            </div>
-          </div>
-          
-          {showApiKeyInput && (
-            <div className="mb-4 p-3 bg-muted rounded-md">
-              <div className="flex justify-between items-center mb-2">
-                <h3 className="text-sm font-medium">OpenAI API Key</h3>
-                <Button variant="ghost" size="icon" onClick={() => setShowApiKeyInput(false)}>
-                  <X className="h-4 w-4" />
-                </Button>
-              </div>
-              <div className="text-xs text-muted-foreground mb-2">
-                {isApiKeySet ? 
-                  "API key is set. You can change it or clear it below." : 
-                  "Add your OpenAI API key to get better AI responses (optional)."}
-              </div>
-              <div className="flex gap-2">
-                <Input
-                  type="password"
-                  placeholder="sk-..."
-                  value={apiKey}
-                  onChange={(e) => setApiKey(e.target.value)}
-                  className="flex-1 text-xs"
-                />
-                <Button size="sm" onClick={handleSetApiKey} disabled={!apiKey.trim()}>
-                  Save
-                </Button>
-                {isApiKeySet && (
-                  <Button size="sm" variant="destructive" onClick={clearApiKey}>
-                    Clear
-                  </Button>
-                )}
-              </div>
-            </div>
-          )}
-          
-          <div className="chat-messages flex-1 overflow-auto space-y-4 mb-4 p-2">
-            {messages.length === 0 ? (
-              <div className="text-center text-muted-foreground py-8">
-                <p>Ask me anything about your whiteboard or any other topic!</p>
-              </div>
-            ) : (
-              <div className="space-y-4">
-                {messages.map((message) => (
-                  <div key={message.id} className={`flex ${message.role === "user" ? "justify-end" : "justify-start"}`}>
-                    <div className={`max-w-[85%] rounded-lg p-3 ${
-                      message.role === "user"
-                        ? "bg-primary text-primary-foreground"
-                        : "bg-muted"
-                    }`}>
-                      <div className="flex flex-col">
-                        <div className="whitespace-pre-wrap">{message.content}</div>
-                        <div className={`text-xs mt-1 ${message.role === "user" ? "text-primary-foreground/70" : "text-muted-foreground"}`}>
-                          {formatTime(message.timestamp)}
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-                ))}
-                {isLoading && (
-                  <div className="flex justify-start">
-                    <div className="bg-muted rounded-lg p-3 flex items-center">
-                      <Loader2 className="h-4 w-4 animate-spin mr-2" />
-                      <span className="text-sm">Thinking...</span>
-                    </div>
-                  </div>
-                )}
-                <div ref={chatEndRef} />
-              </div>
-            )}
-          </div>
-          
-          <form onSubmit={handleSubmit} className="flex items-center space-x-2">
-            <Input
-              placeholder="Ask any question..."
-              value={query}
-              onChange={(e) => setQuery(e.target.value)}
-              className="flex-1"
-              disabled={isLoading}
-            />
-            <Button type="submit" size="icon" disabled={isLoading || !query.trim()}>
-              {isLoading ? (
-                <Loader2 className="h-4 w-4 animate-spin" />
-              ) : (
-                <Send className="h-4 w-4" />
-              )}
+      {/* Hero Section */}
+      <section className="flex-1 flex flex-col items-center justify-center text-center px-4 py-16 md:py-24 bg-gradient-to-b from-blue-50 to-white dark:from-gray-900 dark:to-background">
+        <div className="max-w-4xl mx-auto">
+          <h1 className="text-4xl md:text-6xl font-bold tracking-tight">
+            <span className="text-blue-600 dark:text-blue-400">Mind</span>Sync: Collaborative Learning
+          </h1>
+          <p className="mt-6 text-xl md:text-2xl text-gray-600 dark:text-gray-300">
+            Transform your learning experience with real-time collaboration, AI assistance, and interactive study tools.
+          </p>
+          <div className="mt-10 flex flex-col sm:flex-row gap-4 justify-center">
+            <Button asChild size="lg" className="text-lg px-8">
+              <Link href="/signup">Get Started</Link>
             </Button>
-          </form>
+            <Button asChild variant="outline" size="lg" className="text-lg px-8">
+              <Link href="/login">Sign In</Link>
+            </Button>
+          </div>
         </div>
-      </main>
+      </section>
       
-      <Footer />
+      {/* Features Section */}
+      <section className="py-16 px-4 bg-white dark:bg-black">
+        <div className="max-w-6xl mx-auto">
+          <h2 className="text-3xl font-bold text-center mb-12">Key Features</h2>
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
+            <FeatureCard 
+              title="Study Groups" 
+              description="Find or create study groups based on subjects. Collaborate with peers to enhance your learning experience."
+              icon={<GroupIcon />}
+            />
+            <FeatureCard 
+              title="Interactive Whiteboard" 
+              description="Real-time collaborative whiteboard with drawing, text, and image tools to visualize concepts together."
+              icon={<BoardIcon />}
+            />
+            <FeatureCard 
+              title="AI-Powered Assistance" 
+              description="Get instant help from our AI tutor. Upload documents for summaries and explanations."
+              icon={<AiIcon />}
+            />
+          </div>
+        </div>
+      </section>
+      
+      {/* How It Works */}
+      <section className="py-16 px-4 bg-gray-50 dark:bg-gray-900">
+        <div className="max-w-6xl mx-auto">
+          <h2 className="text-3xl font-bold text-center mb-4">How It Works</h2>
+          <p className="text-center text-gray-600 dark:text-gray-400 max-w-2xl mx-auto mb-12">
+            Our platform makes collaborative learning simple and effective
+          </p>
+          
+          <div className="grid grid-cols-1 md:grid-cols-4 gap-8 text-center">
+            <StepCard 
+              number="1" 
+              title="Create Account" 
+              description="Sign up for a free account to access all features"
+            />
+            <StepCard 
+              number="2" 
+              title="Find Study Groups" 
+              description="Browse or create study groups based on your interests"
+            />
+            <StepCard 
+              number="3" 
+              title="Collaborate" 
+              description="Use interactive tools to learn together in real-time"
+            />
+            <StepCard 
+              number="4" 
+              title="Get AI Help" 
+              description="Ask questions or upload documents for AI assistance"
+            />
+          </div>
+        </div>
+      </section>
+      
+      {/* CTA Section */}
+      <section className="py-16 px-4 bg-blue-600 dark:bg-blue-800 text-white">
+        <div className="max-w-3xl mx-auto text-center">
+          <h2 className="text-3xl font-bold mb-4">Ready to transform your learning experience?</h2>
+          <p className="mb-8 text-blue-100">Join thousands of students enhancing their education with MindSync.</p>
+          <Button asChild size="lg" variant="secondary" className="text-blue-800">
+            <Link href="/signup">Start Learning Now</Link>
+          </Button>
+        </div>
+      </section>
+      
+      {/* Footer */}
+      <footer className="py-8 px-4 border-t">
+        <div className="max-w-6xl mx-auto text-center">
+          <p className="text-gray-600 dark:text-gray-400">
+            © {new Date().getFullYear()} MindSync. All rights reserved.
+          </p>
+        </div>
+      </footer>
     </div>
+  );
+}
+
+function FeatureCard({ title, description, icon }: { title: string; description: string; icon: React.ReactNode }) {
+  return (
+    <div className="bg-gray-50 dark:bg-gray-900 p-6 rounded-xl border border-gray-200 dark:border-gray-800">
+      <div className="w-12 h-12 rounded-full bg-blue-100 dark:bg-blue-900 flex items-center justify-center mb-4 text-blue-600 dark:text-blue-400">
+        {icon}
+      </div>
+      <h3 className="text-xl font-bold mb-2">{title}</h3>
+      <p className="text-gray-600 dark:text-gray-400">{description}</p>
+    </div>
+  );
+}
+
+function StepCard({ number, title, description }: { number: string; title: string; description: string }) {
+  return (
+    <div className="flex flex-col items-center">
+      <div className="w-12 h-12 rounded-full bg-blue-600 text-white flex items-center justify-center text-xl font-bold mb-4">
+        {number}
+      </div>
+      <h3 className="text-lg font-bold mb-2">{title}</h3>
+      <p className="text-gray-600 dark:text-gray-400">{description}</p>
+    </div>
+  );
+}
+
+function GroupIcon() {
+  return (
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="w-6 h-6">
+      <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path>
+      <circle cx="9" cy="7" r="4"></circle>
+      <path d="M23 21v-2a4 4 0 0 0-3-3.87"></path>
+      <path d="M16 3.13a4 4 0 0 1 0 7.75"></path>
+    </svg>
+  );
+}
+
+function BoardIcon() {
+  return (
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="w-6 h-6">
+      <rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect>
+      <line x1="3" y1="9" x2="21" y2="9"></line>
+      <line x1="9" y1="21" x2="9" y2="9"></line>
+    </svg>
+  );
+}
+
+function AiIcon() {
+  return (
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="w-6 h-6">
+      <path d="M12 2a10 10 0 1 0 10 10H12V2z" />
+      <path d="M12 2v10h10a10 10 0 0 0-10-10z" />
+      <circle cx="12" cy="12" r="6" />
+    </svg>
   );
 }

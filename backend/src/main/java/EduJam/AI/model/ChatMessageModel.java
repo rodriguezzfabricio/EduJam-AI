@@ -16,6 +16,9 @@ public class ChatMessageModel {
     private String senderId;
     private String message;
     private boolean fromUser;
+    private String fileUrl;
+    private String fileName;
+    private String mimeType;
     
     /**
      * Default constructor.
@@ -140,6 +143,60 @@ public class ChatMessageModel {
         this.fromUser = fromUser;
     }
     
+    /**
+     * Gets the file URL.
+     *
+     * @return The URL of the attached file
+     */
+    public String getFileUrl() {
+        return fileUrl;
+    }
+    
+    /**
+     * Sets the file URL.
+     *
+     * @param fileUrl The URL of the attached file
+     */
+    public void setFileUrl(String fileUrl) {
+        this.fileUrl = fileUrl;
+    }
+    
+    /**
+     * Gets the file name.
+     *
+     * @return The name of the attached file
+     */
+    public String getFileName() {
+        return fileName;
+    }
+    
+    /**
+     * Sets the file name.
+     *
+     * @param fileName The name of the attached file
+     */
+    public void setFileName(String fileName) {
+        this.fileName = fileName;
+    }
+    
+    /**
+     * Gets the MIME type of the file.
+     *
+     * @return The MIME type of the attached file
+     */
+    public String getMimeType() {
+        return mimeType;
+    }
+    
+    /**
+     * Sets the MIME type of the file.
+     *
+     * @param mimeType The MIME type of the attached file
+     */
+    public void setMimeType(String mimeType) {
+        this.mimeType = mimeType;
+    }
+    
     @Override
     public boolean equals(Object o) {
         if (this == o) return true;
@@ -150,12 +207,15 @@ public class ChatMessageModel {
                 Objects.equals(sessionId, that.sessionId) &&
                 Objects.equals(senderId, that.senderId) &&
                 Objects.equals(message, that.message) &&
-                Objects.equals(timestamp, that.timestamp);
+                Objects.equals(timestamp, that.timestamp) &&
+                Objects.equals(fileUrl, that.fileUrl) &&
+                Objects.equals(fileName, that.fileName) &&
+                Objects.equals(mimeType, that.mimeType);
     }
     
     @Override
     public int hashCode() {
-        return Objects.hash(id, sessionId, senderId, message, fromUser, timestamp);
+        return Objects.hash(id, sessionId, senderId, message, fromUser, timestamp, fileUrl, fileName, mimeType);
     }
     
     @Override
@@ -167,6 +227,9 @@ public class ChatMessageModel {
                 ", message='" + message + '\'' +
                 ", fromUser=" + fromUser +
                 ", timestamp=" + timestamp +
+                ", fileUrl='" + fileUrl + '\'' +
+                ", fileName='" + fileName + '\'' +
+                ", mimeType='" + mimeType + '\'' +
                 '}';
     }
 } 
