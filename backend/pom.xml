@@ -16,6 +16,7 @@
     <properties>
         <java.version>17</java.version>
         <openai.version>0.18.2</openai.version>
+        <firebase.admin.version>9.2.0</firebase.admin.version>
     </properties>
     
     <dependencies>
@@ -48,6 +49,13 @@
             <groupId>com.theokanning.openai-gpt3-java</groupId>
             <artifactId>api</artifactId>
             <version>${openai.version}</version>
+        </dependency>
+        
+        <!-- Firebase Admin SDK -->
+        <dependency>
+            <groupId>com.google.firebase</groupId>
+            <artifactId>firebase-admin</artifactId>
+            <version>${firebase.admin.version}</version>
         </dependency>
         
         <!-- Lombok for reducing boilerplate -->
